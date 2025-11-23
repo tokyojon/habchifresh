@@ -42,6 +42,37 @@ const App: React.FC = () => {
     window.scrollTo(0, 0);
   }, [currentStep]);
 
+  // 6-minute reminder after taking the first carton photo
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+
+    if (data.cartonLabelPhoto) {
+      // 6 minutes = 360,000 ms
+      timer = setTimeout(() => {
+        const text = "Reminder: It has been 6 minutes. Please pick a box by random and take a photo.";
+        
+        // Audio Prompt
+        if ('speechSynthesis' in window) {
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.rate = 0.9;
+          // Ensure voice is loaded (sometimes needed on mobile)
+          const voices = window.speechSynthesis.getVoices();
+          if (voices.length > 0) {
+            utterance.voice = voices[0];
+          }
+          window.speechSynthesis.speak(utterance);
+        }
+        
+        // Visual Alert
+        alert("⏰ " + text);
+      }, 360000);
+    }
+
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [data.cartonLabelPhoto]);
+
   const updateData = (key: keyof ReportData, value: any) => {
     setData(prev => ({ ...prev, [key]: value }));
   };
@@ -101,7 +132,6 @@ const App: React.FC = () => {
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();
       const margin = 15;
-      const contentWidth = pageWidth - (margin * 2);
       let yPos = 20;
 
       // Header from Instruction Document
@@ -162,18 +192,39 @@ const App: React.FC = () => {
 
         try {
           const base64 = await readFileAsBase64(file);
-          const imgProps = doc.getImageProperties(base64);
           
-          // Calculate height to fit width (max height 110mm to allow multiple per page if possible)
-          let pdfImgHeight = (imgProps.height * contentWidth) / imgProps.width;
-          const maxHeight = 110;
+          // Load image to get dimensions with safety timeout to prevent hanging
+          const img = new Image();
+          img.src = base64;
           
-          if (pdfImgHeight > maxHeight) {
-             pdfImgHeight = maxHeight; 
+          await new Promise((resolve, reject) => { 
+            const timeoutId = setTimeout(() => {
+                img.src = ""; // Stop loading
+                reject(new Error("Image load timeout"));
+            }, 5000); // 5 second timeout
+
+            img.onload = () => {
+              clearTimeout(timeoutId);
+              resolve(true);
+            };
+            img.onerror = (e) => {
+              clearTimeout(timeoutId);
+              reject(e);
+            };
+          });
+
+          // Calculate dimensions to fit width, max height 100mm
+          const aspectRatio = img.height / img.width;
+          let imgWidth = 120; // Fixed width for consistency
+          let imgHeight = imgWidth * aspectRatio;
+          
+          if (imgHeight > 120) {
+             imgHeight = 120;
+             imgWidth = imgHeight / aspectRatio;
           }
 
           // Check if image fits on current page
-          if (yPos + pdfImgHeight > 280) {
+          if (yPos + imgHeight > 280) {
             doc.addPage();
             yPos = 20;
             doc.text(`${title} (cont.)`, margin, yPos);
@@ -181,16 +232,15 @@ const App: React.FC = () => {
           }
 
           // Detect format
-          let format = 'JPEG';
-          if (base64.startsWith('data:image/png')) format = 'PNG';
-          if (base64.startsWith('data:image/webp')) format = 'WEBP';
+          const format = base64.includes('image/png') ? 'PNG' : 'JPEG';
 
-          doc.addImage(base64, format, margin, yPos, (imgProps.width * pdfImgHeight) / imgProps.height, pdfImgHeight);
-          yPos += pdfImgHeight + 10;
+          doc.addImage(base64, format, margin, yPos, imgWidth, imgHeight);
+          yPos += imgHeight + 10;
         } catch (e) {
           console.error("Error adding image to PDF", e);
+          doc.setFontSize(10);
           doc.setTextColor(150, 0, 0);
-          doc.text(`[Error loading image]`, margin, yPos);
+          doc.text(`[Error loading image: ${file.name}]`, margin, yPos);
           yPos += 10;
         }
       };
@@ -201,7 +251,9 @@ const App: React.FC = () => {
       await addImageSection("4. Produce Inside Carton", data.producePhoto);
       await addImageSection("5. Temperature Probe Reading", data.temperaturePhoto);
 
-      doc.save(`unpack_container_log_${data.containerNumber}.pdf`);
+      // Sanitize filename
+      const safeContainerNum = data.containerNumber.replace(/[^a-zA-Z0-9]/g, '_') || 'report';
+      doc.save(`unpack_container_log_${safeContainerNum}.pdf`);
     } catch (error) {
       console.error("PDF Generation failed", error);
       alert("Failed to generate PDF. Please try again.");
@@ -467,7 +519,7 @@ NOTE: Please find the full PDF report and all original photos attached to this e
                <FileSearch className="h-6 w-6" />
              </button>
              <div className="text-xs font-mono bg-gray-100 px-2 py-1 rounded text-gray-500">
-               v1.2
+               v1.2.1
              </div>
           </div>
         </div>

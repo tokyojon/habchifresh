@@ -27,7 +27,7 @@ let chatSession: Chat | null = null;
 export const getChatSession = () => {
   if (!chatSession) {
     chatSession = ai.chats.create({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-2.5-flash',
       config: {
         systemInstruction: INSTRUCTION_TEXT,
       },
@@ -61,13 +61,22 @@ export const analyzeImageWithGemini = async (file: File, prompt: string): Promis
       reader.readAsDataURL(file);
     });
 
+    // Determine correct MIME type (fallback to jpeg if unknown/stream)
+    let mimeType = file.type;
+    if (!mimeType || mimeType === 'application/octet-stream') {
+      const name = file.name.toLowerCase();
+      if (name.endsWith('.png')) mimeType = 'image/png';
+      else if (name.endsWith('.webp')) mimeType = 'image/webp';
+      else mimeType = 'image/jpeg';
+    }
+
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview',
+      model: 'gemini-2.5-flash',
       contents: {
         parts: [
           {
             inlineData: {
-              mimeType: file.type,
+              mimeType: mimeType,
               data: base64Data,
             },
           },
@@ -79,8 +88,13 @@ export const analyzeImageWithGemini = async (file: File, prompt: string): Promis
     });
 
     return response.text || "No analysis result returned.";
-  } catch (error) {
+  } catch (error: any) {
     console.error("Gemini Vision Error:", error);
-    return "Failed to analyze the image. Please try again.";
+    
+    if (error.status === 429 || (error.message && error.message.includes('429'))) {
+       return "System overloaded (Quota Exceeded). Please wait a moment and try again.";
+    }
+
+    return `Analysis failed: ${error.message || "Unknown error"}.`;
   }
 };

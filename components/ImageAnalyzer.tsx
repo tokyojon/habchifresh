@@ -20,11 +20,13 @@ const ImageAnalyzer: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       const analysis = await analyzeImageWithGemini(file, prompt);
       setResult(analysis);
     } catch (err) {
-      setResult("Error analyzing image.");
+      setResult("Analysis failed due to an unexpected application error.");
     } finally {
       setLoading(false);
     }
   };
+
+  const isError = result?.includes("Analysis failed") || result?.includes("Error") || result?.includes("System overloaded");
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-40 p-4 overflow-y-auto">
@@ -39,7 +41,7 @@ const ImageAnalyzer: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 
         <div className="p-6">
           <p className="text-gray-600 mb-4 text-sm">
-            Upload a photo of produce or a label to get an instant AI assessment using Gemini 3 Pro.
+            Upload a photo of produce or a label to get an instant AI assessment using Gemini.
           </p>
 
           <CameraInput 
@@ -57,11 +59,12 @@ const ImageAnalyzer: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           )}
 
           {result && !loading && (
-            <div className="bg-indigo-50 border border-indigo-100 rounded-lg p-4 mt-4">
-              <h4 className="font-semibold text-indigo-900 mb-2 flex items-center gap-2">
-                <Sparkles className="h-4 w-4" /> Analysis Result
+            <div className={`rounded-lg p-4 mt-4 border ${isError ? "bg-red-50 border-red-100 text-red-900" : "bg-indigo-50 border-indigo-100 text-gray-800"}`}>
+              <h4 className="font-semibold mb-2 flex items-center gap-2">
+                {isError ? <AlertCircle className="h-4 w-4 text-red-600" /> : <Sparkles className="h-4 w-4 text-indigo-600" />}
+                {isError ? "Error" : "Analysis Result"}
               </h4>
-              <p className="text-gray-800 text-sm whitespace-pre-wrap leading-relaxed">
+              <p className="text-sm whitespace-pre-wrap leading-relaxed">
                 {result}
               </p>
             </div>

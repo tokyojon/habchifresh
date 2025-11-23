@@ -1,0 +1,7 @@
+{
+  "name": "Habchi Fresh Inspect",
+  "description": "Digital reporting tool for unloading container instructions, featuring AI assistance and image analysis for fresh produce quality control.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
